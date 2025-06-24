@@ -2,20 +2,26 @@ import { corsHeaders } from "@shared/cors.ts";
 
 // Configuration constants
 const MAX_RETRIES = 3;
-const RETRY_BASE_DELAY_MS = 500;
-const REQUEST_TIMEOUT_MS = 30000;
-const MAX_CONTENT_LENGTH = 10000;
+const RETRY_BASE_DELAY_MS = 1000;
+const REQUEST_TIMEOUT_MS = 45000;
+const MAX_CONTENT_LENGTH = 8000;
 
-// Environment variable validation
+// Environment variable validation with fallback
 function validateEnvironment(): {
   googleApiKey: string;
 } {
-  const googleApiKey = "AIzaSyAktTRGHEmzYHT7fTUVWnwlMf-qDCBUa6o";
+  // Try multiple possible API key sources
+  const googleApiKey =
+    Deno.env.get("GOOGLE_AI_API_KEY") ||
+    Deno.env.get("GOOGLE_API_KEY") ||
+    "AIzaSyAktTRGHEmzYHT7fTUVWnwlMf-qDCBUa6o";
 
-  if (!googleApiKey) {
-    throw new Error("Missing Google AI Studio API key");
+  if (!googleApiKey || googleApiKey.length < 20) {
+    console.error("Invalid or missing Google AI Studio API key");
+    throw new Error("Missing or invalid Google AI Studio API key");
   }
 
+  console.log("API Key validation successful, length:", googleApiKey.length);
   return { googleApiKey };
 }
 
@@ -95,13 +101,22 @@ async function retryWithBackoff<T>(
   throw lastError!;
 }
 
-// API call function
+// API call function with enhanced error handling
 async function callGoogleAIAPI(
   content: string,
   subreddit: string,
   tone: string,
   googleApiKey: string,
 ): Promise<any> {
+  // Validate inputs
+  if (!content || content.length < 10) {
+    throw new Error("Content too short for optimization");
+  }
+
+  if (!googleApiKey || googleApiKey.length < 20) {
+    throw new Error("Invalid API key format");
+  }
+
   const prompt = `You are an AI assistant that optimizes Reddit posts for specific subreddits. Your task is to adapt the given content to match the tone, style, and rules of the target subreddit while maintaining the core message.
 
 Guidelines:
@@ -137,33 +152,50 @@ Tone preference: ${tone}`;
     ],
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 1000,
+      maxOutputTokens: 1500,
+      topP: 0.8,
+      topK: 40,
     },
+    safetySettings: [
+      {
+        category: "HARM_CATEGORY_HARASSMENT",
+        threshold: "BLOCK_MEDIUM_AND_ABOVE",
+      },
+      {
+        category: "HARM_CATEGORY_HATE_SPEECH",
+        threshold: "BLOCK_MEDIUM_AND_ABOVE",
+      },
+    ],
   };
 
+  const endpoint =
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+
   console.log("Making API request:", {
-    endpoint:
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+    endpoint,
     contentLength: content.length,
     subreddit,
     tone,
+    payloadSize: JSON.stringify(requestPayload).length,
+    timestamp: new Date().toISOString(),
   });
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => {
+    console.log("Request timeout triggered after", REQUEST_TIMEOUT_MS, "ms");
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${googleApiKey}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestPayload),
-        signal: controller.signal,
+    const response = await fetch(`${endpoint}?key=${googleApiKey}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": "Supabase-Edge-Function/1.0",
       },
-    );
+      body: JSON.stringify(requestPayload),
+      signal: controller.signal,
+    });
 
     clearTimeout(timeoutId);
 
@@ -176,8 +208,15 @@ Tone preference: ${tone}`;
 
     if (!response.ok) {
       let errorText = "";
+      let errorData: any = null;
+
       try {
         errorText = await response.text();
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          // errorText is not JSON, keep as string
+        }
       } catch (e) {
         errorText = "Could not read error response";
       }
@@ -185,13 +224,35 @@ Tone preference: ${tone}`;
       console.error("API error details:", {
         status: response.status,
         statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
         body: errorText,
+        parsedError: errorData,
+        url: response.url,
       });
 
-      const error = new Error(
-        `API error: ${response.status} - ${response.statusText}: ${errorText}`,
-      );
+      // Handle specific error cases
+      let errorMessage = `API error: ${response.status} - ${response.statusText}`;
+
+      if (response.status === 400) {
+        errorMessage =
+          "Invalid request format or content blocked by safety filters";
+      } else if (response.status === 401) {
+        errorMessage = "Invalid API key or authentication failed";
+      } else if (response.status === 403) {
+        errorMessage = "API access forbidden - check API key permissions";
+      } else if (response.status === 429) {
+        errorMessage = "Rate limit exceeded - please try again later";
+      } else if (response.status >= 500) {
+        errorMessage = "Google AI service temporarily unavailable";
+      }
+
+      if (errorData?.error?.message) {
+        errorMessage += `: ${errorData.error.message}`;
+      }
+
+      const error = new Error(errorMessage);
       (error as any).status = response.status;
+      (error as any).details = errorData;
       throw error;
     }
 
@@ -213,17 +274,49 @@ Tone preference: ${tone}`;
   }
 }
 
-// Response processing function
+// Response processing function with enhanced validation
 function processAPIResponse(
   data: any,
   content: string,
   subreddit: string,
   tone: string,
 ) {
+  console.log("Processing API response:", {
+    hasCandidates: !!data.candidates,
+    candidatesCount: data.candidates?.length || 0,
+    firstCandidateFinishReason: data.candidates?.[0]?.finishReason,
+    hasContent: !!data.candidates?.[0]?.content,
+    safetyRatings: data.candidates?.[0]?.safetyRatings,
+  });
+
+  // Check for safety issues
+  if (data.candidates?.[0]?.finishReason === "SAFETY") {
+    throw new Error(
+      "Content was blocked by safety filters. Please try with different content.",
+    );
+  }
+
   const aiContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!aiContent) {
-    console.error("No content in API response:", data);
-    throw new Error("No content received from AI API");
+    console.error("No content in API response:", {
+      fullResponse: JSON.stringify(data, null, 2),
+    });
+
+    // Provide fallback response
+    return {
+      optimizedContent: content, // Return original content as fallback
+      optimizedTitle: "Optimized Post",
+      originalContent: content,
+      subreddit,
+      tone,
+      tips: [
+        "AI optimization temporarily unavailable",
+        "Using original content as fallback",
+        "Please try again later for AI enhancements",
+      ],
+      timestamp: new Date().toISOString(),
+      fallback: true,
+    };
   }
 
   let optimizedContent = aiContent;
@@ -231,6 +324,7 @@ function processAPIResponse(
   let tips: string[] = [];
 
   try {
+    // Try to parse as JSON first
     const parsedResponse = JSON.parse(aiContent);
     if (parsedResponse.optimizedContent) {
       optimizedContent = parsedResponse.optimizedContent;
@@ -238,12 +332,23 @@ function processAPIResponse(
       tips = Array.isArray(parsedResponse.tips) ? parsedResponse.tips : [];
     }
   } catch (e) {
-    console.log("AI response is not JSON, using as plain text");
+    console.log("AI response is not JSON, processing as plain text");
+
+    // Try to extract structured content from plain text
+    const lines = aiContent.split("\n").filter((line) => line.trim());
+    optimizedContent = aiContent;
+
     tips = [
       "Content optimized for better engagement",
       "Tone adjusted for target audience",
       "Structure improved for readability",
     ];
+  }
+
+  // Validate the optimized content
+  if (!optimizedContent || optimizedContent.length < 10) {
+    optimizedContent = content; // Fallback to original
+    tips.unshift("Using original content due to processing issues");
   }
 
   return {

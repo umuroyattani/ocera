@@ -50,17 +50,31 @@ Deno.serve(async (req) => {
 
     // Process webhook data if needed
     if (webhookData.userId && webhookData.plan) {
+      const updateData: any = {
+        subscription_plan: webhookData.plan,
+        subscription_status: webhookData.status || "active",
+        updated_at: new Date().toISOString(),
+      };
+
+      // Add subscription ID and expiry if provided
+      if (webhookData.subscriptionId) {
+        updateData.subscription_id = webhookData.subscriptionId;
+      }
+      if (webhookData.expiresAt) {
+        updateData.subscription_expires_at = webhookData.expiresAt;
+      }
+
       const { error } = await supabase
         .from("users")
-        .update({
-          subscription_plan: webhookData.plan,
-          subscription_status: webhookData.status || "active",
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", webhookData.userId);
 
       if (error) {
         console.error("Database update error:", error);
+      } else {
+        console.log(
+          `Successfully updated subscription for user ${webhookData.userId} to ${webhookData.plan}`,
+        );
       }
     }
 

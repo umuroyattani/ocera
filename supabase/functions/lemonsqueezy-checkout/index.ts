@@ -18,6 +18,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Validate plan
+    const validPlans = ["free", "premium"];
+    if (!validPlans.includes(plan)) {
+      return new Response(JSON.stringify({ error: "Invalid plan specified" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Call Pica passthrough endpoint
     const response = await fetch(
       "https://api.picaos.com/v1/passthrough/api/lemonsqueezy/checkout",

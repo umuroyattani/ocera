@@ -153,6 +153,16 @@ export default function DashboardNavbar({
                 Schedule
               </Button>
             </Link>
+            <Link href="/account">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400"
+              >
+                <Settings className="w-4 h-4" />
+                Account
+              </Button>
+            </Link>
           </div>
         </div>
 
@@ -204,11 +214,9 @@ export default function DashboardNavbar({
                 <div className="mt-2">{getPlanBadge()}</div>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => router.push("/dashboard?tab=settings")}
-              >
+              <DropdownMenuItem onClick={() => router.push("/account")}>
                 <Settings className="w-4 h-4 mr-2" />
-                Settings
+                Account Settings
               </DropdownMenuItem>
               {userData?.subscription_plan !== "premium" && (
                 <DropdownMenuItem
@@ -284,6 +292,12 @@ export default function DashboardNavbar({
               <Button variant="ghost" className="w-full justify-start">
                 <Clock className="w-4 h-4 mr-3" />
                 Schedule
+              </Button>
+            </Link>
+            <Link href="/account" onClick={() => setMobileMenuOpen(false)}>
+              <Button variant="ghost" className="w-full justify-start">
+                <Settings className="w-4 h-4 mr-3" />
+                Account
               </Button>
             </Link>
             <div className="pt-3 border-t border-gray-200 dark:border-gray-800 space-y-2">
