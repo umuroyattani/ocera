@@ -19,7 +19,15 @@ import {
 } from "lucide-react";
 import { createClient } from "../../supabase/client";
 
-export default function AIContentOptimizer() {
+interface AIContentOptimizerProps {
+  userData?: any;
+  user?: any;
+}
+
+export default function AIContentOptimizer({
+  userData,
+  user,
+}: AIContentOptimizerProps) {
   const [content, setContent] = useState("");
   const [title, setTitle] = useState("");
   const [subreddit, setSubreddit] = useState("");
@@ -32,12 +40,26 @@ export default function AIContentOptimizer() {
   const [success, setSuccess] = useState("");
   const [copied, setCopied] = useState(false);
   const [optimizationTips, setOptimizationTips] = useState<string[]>([]);
+  const [usageCount, setUsageCount] = useState(0);
 
   const supabase = createClient();
+
+  // Check if user has premium plan
+  const isPremium = userData?.subscription_plan === "premium";
+  const monthlyLimit = 3;
+  const hasReachedLimit = !isPremium && usageCount >= monthlyLimit;
 
   const handleOptimize = async () => {
     if (!content.trim()) {
       setError("Please enter some content to optimize");
+      return;
+    }
+
+    // Check usage limits for free users
+    if (!isPremium && usageCount >= monthlyLimit) {
+      setError(
+        `You've reached your monthly limit of ${monthlyLimit} AI optimizations. Upgrade to Premium for unlimited access.`,
+      );
       return;
     }
 
@@ -72,6 +94,10 @@ export default function AIContentOptimizer() {
           ],
         );
         setSuccess("Content optimized successfully!");
+        // Increment usage count for free users
+        if (!isPremium) {
+          setUsageCount((prev) => prev + 1);
+        }
         setTimeout(() => setSuccess(""), 3000);
       } else {
         throw new Error("No optimized content received");
@@ -290,6 +316,24 @@ export default function AIContentOptimizer() {
                   </div>
                 </div>
               </div>
+
+              {!isPremium && (
+                <div className="bg-gradient-to-r from-orange-50 to-purple-50 dark:from-orange-950/30 dark:to-purple-950/30 p-4 rounded-lg border border-orange-200 dark:border-orange-800">
+                  <div className="flex items-start gap-2">
+                    <Sparkles className="w-4 h-4 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+                    <div className="text-sm text-orange-800 dark:text-orange-200">
+                      <p className="font-medium mb-1">Usage Limit:</p>
+                      <p className="text-xs text-orange-700 dark:text-orange-300">
+                        {usageCount}/{monthlyLimit} AI optimizations used this
+                        month.
+                        {hasReachedLimit
+                          ? " Upgrade to Premium for unlimited access!"
+                          : " Upgrade for unlimited optimizations."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -310,8 +354,8 @@ export default function AIContentOptimizer() {
           <div className="flex flex-wrap gap-3">
             <Button
               onClick={handleOptimize}
-              disabled={isLoading || !content.trim()}
-              className="bg-gradient-to-r from-orange-600 to-purple-600 hover:from-orange-700 hover:to-purple-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 flex-1 min-w-[200px]"
+              disabled={isLoading || !content.trim() || hasReachedLimit}
+              className={`${hasReachedLimit ? "bg-gray-400 cursor-not-allowed" : "bg-gradient-to-r from-orange-600 to-purple-600 hover:from-orange-700 hover:to-purple-700"} text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 flex-1 min-w-[200px]`}
               size="lg"
             >
               {isLoading ? (
@@ -319,10 +363,16 @@ export default function AIContentOptimizer() {
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Optimizing with AI...
                 </>
+              ) : hasReachedLimit ? (
+                <>
+                  <AlertCircle className="w-4 h-4 mr-2" />
+                  Limit Reached - Upgrade
+                </>
               ) : (
                 <>
                   <Wand2 className="w-4 h-4 mr-2" />
-                  Optimize Content
+                  Optimize Content{" "}
+                  {!isPremium ? `(${monthlyLimit - usageCount} left)` : ""}
                 </>
               )}
             </Button>

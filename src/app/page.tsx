@@ -61,22 +61,34 @@ export default function Home() {
               that actually work.
             </p>
             <div className="flex flex-col sm:flex-row gap-6 justify-center mb-16">
-              <Link href="/sign-up">
-                <Button
-                  size="lg"
-                  className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white px-10 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
-                >
-                  Start Free Trial
-                  <ArrowUpRight className="ml-2 w-5 h-5" />
-                </Button>
-              </Link>
-              <Link href="/dashboard">
+              {user ? (
+                <Link href="/dashboard">
+                  <Button
+                    size="lg"
+                    className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white px-10 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
+                  >
+                    Go to Dashboard
+                    <ArrowUpRight className="ml-2 w-5 h-5" />
+                  </Button>
+                </Link>
+              ) : (
+                <Link href="/sign-up">
+                  <Button
+                    size="lg"
+                    className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white px-10 py-4 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
+                  >
+                    Start Free Trial
+                    <ArrowUpRight className="ml-2 w-5 h-5" />
+                  </Button>
+                </Link>
+              )}
+              <Link href={user ? "/account" : "/dashboard"}>
                 <Button
                   variant="outline"
                   size="lg"
                   className="px-10 py-4 text-lg font-semibold border-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-300"
                 >
-                  View Dashboard
+                  {user ? "Account Settings" : "View Dashboard"}
                 </Button>
               </Link>
             </div>
@@ -397,15 +409,51 @@ export default function Home() {
                   ))}
                 </ul>
 
-                <Link href={plan.name === "Free" ? "/sign-up" : "/sign-up"}>
+                <Link
+                  href={
+                    plan.name === "Free"
+                      ? "/sign-up"
+                      : user
+                        ? "/dashboard"
+                        : "/sign-up"
+                  }
+                >
                   <Button
                     className={`w-full py-3 font-semibold transition-all duration-300 ${
                       plan.highlight
                         ? "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg"
                         : "bg-gray-900 hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200 text-white"
                     }`}
+                    onClick={
+                      plan.name === "Premium" && user
+                        ? async (e) => {
+                            e.preventDefault();
+                            try {
+                              const { data, error } =
+                                await supabase.functions.invoke(
+                                  "supabase-functions-lemonsqueezy-checkout",
+                                  {
+                                    body: {
+                                      plan: "premium",
+                                      userId: user.id,
+                                    },
+                                  },
+                                );
+                              if (error) throw error;
+                              if (data?.success && data.checkoutUrl) {
+                                window.location.href = data.checkoutUrl;
+                              }
+                            } catch (error) {
+                              console.error("Checkout error:", error);
+                              alert(
+                                "Failed to create checkout session. Please try again.",
+                              );
+                            }
+                          }
+                        : undefined
+                    }
                   >
-                    {plan.cta}
+                    {plan.name === "Premium" && user ? "Upgrade Now" : plan.cta}
                   </Button>
                 </Link>
               </div>

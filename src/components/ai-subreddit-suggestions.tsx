@@ -30,19 +30,41 @@ interface SubredditSuggestion {
   rules?: string[];
 }
 
-export default function AISubredditSuggestions() {
+interface AISubredditSuggestionsProps {
+  userData?: any;
+  user?: any;
+}
+
+export default function AISubredditSuggestions({
+  userData,
+  user,
+}: AISubredditSuggestionsProps) {
   const [content, setContent] = useState("");
   const [category, setCategory] = useState("");
   const [suggestions, setSuggestions] = useState<SubredditSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [usageCount, setUsageCount] = useState(0);
 
   const supabase = createClient();
+
+  // Check if user has premium plan
+  const isPremium = userData?.subscription_plan === "premium";
+  const monthlyLimit = 3;
+  const hasReachedLimit = !isPremium && usageCount >= monthlyLimit;
 
   const handleGetSuggestions = async () => {
     if (!content.trim()) {
       setError("Please enter some content to analyze");
+      return;
+    }
+
+    // Check usage limits for free users
+    if (!isPremium && usageCount >= monthlyLimit) {
+      setError(
+        `You've reached your monthly limit of ${monthlyLimit} subreddit suggestions. Upgrade to Premium for unlimited access.`,
+      );
       return;
     }
 
@@ -78,6 +100,10 @@ export default function AISubredditSuggestions() {
           }),
         );
         setSuggestions(enhancedSuggestions);
+        // Increment usage count for free users
+        if (!isPremium) {
+          setUsageCount((prev) => prev + 1);
+        }
       } else {
         throw new Error("No suggestions received");
       }
@@ -192,19 +218,39 @@ export default function AISubredditSuggestions() {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 p-4 rounded-lg border border-indigo-200 dark:border-indigo-800">
-            <div className="flex items-start gap-2">
-              <Target className="w-4 h-4 text-indigo-600 dark:text-indigo-400 mt-0.5 flex-shrink-0" />
-              <div className="text-sm text-indigo-800 dark:text-indigo-200">
-                <p className="font-medium mb-2">How it works:</p>
-                <ul className="text-xs space-y-1 text-indigo-700 dark:text-indigo-300">
-                  <li>• AI analyzes your content's topic and tone</li>
-                  <li>• Matches with relevant subreddit communities</li>
-                  <li>• Provides engagement and subscriber insights</li>
-                  <li>• Shows relevance scores for better targeting</li>
-                </ul>
+          <div className="space-y-4">
+            <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 p-4 rounded-lg border border-indigo-200 dark:border-indigo-800">
+              <div className="flex items-start gap-2">
+                <Target className="w-4 h-4 text-indigo-600 dark:text-indigo-400 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-indigo-800 dark:text-indigo-200">
+                  <p className="font-medium mb-2">How it works:</p>
+                  <ul className="text-xs space-y-1 text-indigo-700 dark:text-indigo-300">
+                    <li>• AI analyzes your content's topic and tone</li>
+                    <li>• Matches with relevant subreddit communities</li>
+                    <li>• Provides engagement and subscriber insights</li>
+                    <li>• Shows relevance scores for better targeting</li>
+                  </ul>
+                </div>
               </div>
             </div>
+
+            {!isPremium && (
+              <div className="bg-gradient-to-r from-orange-50 to-purple-50 dark:from-orange-950/30 dark:to-purple-950/30 p-4 rounded-lg border border-orange-200 dark:border-orange-800">
+                <div className="flex items-start gap-2">
+                  <Zap className="w-4 h-4 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-orange-800 dark:text-orange-200">
+                    <p className="font-medium mb-1">Usage Limit:</p>
+                    <p className="text-xs text-orange-700 dark:text-orange-300">
+                      {usageCount}/{monthlyLimit} subreddit suggestions used
+                      this month.
+                      {hasReachedLimit
+                        ? " Upgrade to Premium for unlimited access!"
+                        : " Upgrade for unlimited suggestions."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -217,8 +263,8 @@ export default function AISubredditSuggestions() {
 
         <Button
           onClick={handleGetSuggestions}
-          disabled={isLoading || !content.trim()}
-          className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300"
+          disabled={isLoading || !content.trim() || hasReachedLimit}
+          className={`w-full ${hasReachedLimit ? "bg-gray-400 cursor-not-allowed" : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"} text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300`}
           size="lg"
         >
           {isLoading ? (
@@ -226,10 +272,16 @@ export default function AISubredditSuggestions() {
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               Analyzing content and finding subreddits...
             </>
+          ) : hasReachedLimit ? (
+            <>
+              <AlertCircle className="w-4 h-4 mr-2" />
+              Limit Reached - Upgrade
+            </>
           ) : (
             <>
               <Search className="w-4 h-4 mr-2" />
-              Find Perfect Subreddits
+              Find Perfect Subreddits{" "}
+              {!isPremium ? `(${monthlyLimit - usageCount} left)` : ""}
             </>
           )}
         </Button>
