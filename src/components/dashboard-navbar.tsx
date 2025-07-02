@@ -51,30 +51,51 @@ export default function DashboardNavbar({
     setUpgradeLoading(true);
 
     try {
+      console.log("Starting Paystack checkout process for user:", user.id);
+
       const { data, error } = await supabase.functions.invoke(
-        "supabase-functions-lemonsqueezy-checkout",
+        "supabase-functions-paystack-checkout",
         {
           body: {
             plan: "premium",
             userId: user.id,
+            email: user.email,
           },
         },
       );
 
+      console.log("Paystack checkout response:", { data, error });
+
       if (error) {
         console.error("Error creating checkout:", error);
-        alert("Failed to create checkout session. Please try again.");
+        alert(
+          `Failed to create checkout session: ${error.message || "Unknown error"}. Please try again.`,
+        );
         return;
       }
 
       if (data?.success && data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+        console.log("Opening Paystack checkout:", data.checkoutUrl);
+        // Open Paystack checkout in a new window
+        const popup = window.open(
+          data.checkoutUrl,
+          "paystack-checkout",
+          "width=500,height=700,scrollbars=yes,resizable=yes",
+        );
+
+        if (!popup) {
+          // Fallback to redirect if popup is blocked
+          window.location.href = data.checkoutUrl;
+        }
       } else {
+        console.error("Invalid checkout response:", data);
         throw new Error(data?.error || "Failed to create checkout session");
       }
     } catch (error) {
       console.error("Upgrade error:", error);
-      alert("Something went wrong. Please try again.");
+      alert(
+        `Something went wrong: ${error.message || "Unknown error"}. Please try again.`,
+      );
     } finally {
       setUpgradeLoading(false);
     }
@@ -100,24 +121,24 @@ export default function DashboardNavbar({
   };
 
   return (
-    <nav className="w-full border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md py-3 shadow-sm sticky top-0 z-50">
-      <div className="container mx-auto px-4 flex justify-between items-center">
-        <div className="flex items-center gap-6">
+    <nav className="w-full border-b border-gray-200/50 dark:border-gray-800/50 bg-white/95 dark:bg-gray-950/95 backdrop-blur-xl py-4 shadow-lg sticky top-0 z-50">
+      <div className="container mx-auto px-6 flex justify-between items-center">
+        <div className="flex items-center gap-8">
           <Link
             href="/"
             prefetch
-            className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-pink-600 bg-clip-text text-transparent"
+            className="text-2xl font-bold bg-gradient-to-r from-orange-500 via-purple-500 to-pink-500 bg-clip-text text-transparent hover:scale-105 transition-transform duration-200"
           >
             Ocera
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden lg:flex items-center space-x-1">
+          <div className="hidden lg:flex items-center space-x-2">
             <Link href="/dashboard">
               <Button
                 variant="ghost"
                 size="sm"
-                className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400"
+                className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-950/30 rounded-lg px-3 py-2 transition-all duration-200"
               >
                 <Home className="w-4 h-4" />
                 Dashboard
@@ -127,7 +148,7 @@ export default function DashboardNavbar({
               <Button
                 variant="ghost"
                 size="sm"
-                className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400"
+                className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-purple-500 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30 rounded-lg px-3 py-2 transition-all duration-200"
               >
                 <Plus className="w-4 h-4" />
                 Create
@@ -137,7 +158,7 @@ export default function DashboardNavbar({
               <Button
                 variant="ghost"
                 size="sm"
-                className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400"
+                className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg px-3 py-2 transition-all duration-200"
               >
                 <BarChart3 className="w-4 h-4" />
                 Analytics
@@ -147,7 +168,7 @@ export default function DashboardNavbar({
               <Button
                 variant="ghost"
                 size="sm"
-                className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400"
+                className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-green-500 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30 rounded-lg px-3 py-2 transition-all duration-200"
               >
                 <Clock className="w-4 h-4" />
                 Schedule
@@ -157,7 +178,7 @@ export default function DashboardNavbar({
               <Button
                 variant="ghost"
                 size="sm"
-                className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-orange-600 dark:hover:text-orange-400"
+                className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg px-3 py-2 transition-all duration-200"
               >
                 <Settings className="w-4 h-4" />
                 Account
@@ -166,7 +187,7 @@ export default function DashboardNavbar({
           </div>
         </div>
 
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-3 items-center">
           {/* Plan Badge */}
           <div className="hidden md:block">{getPlanBadge()}</div>
 
@@ -174,8 +195,7 @@ export default function DashboardNavbar({
           {userData?.subscription_plan !== "premium" && (
             <Button
               size="sm"
-              variant="outline"
-              className="hidden md:flex bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 hover:from-purple-600 hover:to-pink-600"
+              className="hidden md:flex bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 hover:from-purple-600 hover:to-pink-600 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
               onClick={handleUpgrade}
               disabled={upgradeLoading}
             >
@@ -190,7 +210,7 @@ export default function DashboardNavbar({
           {/* New Post Button */}
           <Button
             size="sm"
-            className="hidden md:flex bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white border-0"
+            className="hidden md:flex bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105"
             onClick={() => router.push("/dashboard?tab=create")}
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -203,9 +223,9 @@ export default function DashboardNavbar({
               <Button
                 variant="ghost"
                 size="icon"
-                className="relative hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="relative hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-all duration-200 hover:scale-110"
               >
-                <UserCircle className="h-5 w-5" />
+                <UserCircle className="h-5 w-5 text-gray-600 dark:text-gray-400" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
@@ -259,10 +279,13 @@ export default function DashboardNavbar({
 
       {/* Mobile Navigation */}
       {mobileMenuOpen && (
-        <div className="lg:hidden border-t border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md">
-          <div className="px-4 py-4 space-y-1">
+        <div className="lg:hidden border-t border-gray-200/50 dark:border-gray-800/50 bg-white/98 dark:bg-gray-950/98 backdrop-blur-xl">
+          <div className="px-6 py-6 space-y-2">
             <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
-              <Button variant="ghost" className="w-full justify-start">
+              <Button
+                variant="ghost"
+                className="w-full justify-start hover:bg-orange-50 dark:hover:bg-orange-950/30 rounded-lg transition-all duration-200"
+              >
                 <Home className="w-4 h-4 mr-3" />
                 Dashboard
               </Button>
@@ -271,7 +294,10 @@ export default function DashboardNavbar({
               href="/dashboard?tab=create"
               onClick={() => setMobileMenuOpen(false)}
             >
-              <Button variant="ghost" className="w-full justify-start">
+              <Button
+                variant="ghost"
+                className="w-full justify-start hover:bg-purple-50 dark:hover:bg-purple-950/30 rounded-lg transition-all duration-200"
+              >
                 <Plus className="w-4 h-4 mr-3" />
                 Create Post
               </Button>
@@ -280,7 +306,10 @@ export default function DashboardNavbar({
               href="/dashboard?tab=history"
               onClick={() => setMobileMenuOpen(false)}
             >
-              <Button variant="ghost" className="w-full justify-start">
+              <Button
+                variant="ghost"
+                className="w-full justify-start hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition-all duration-200"
+              >
                 <BarChart3 className="w-4 h-4 mr-3" />
                 Analytics
               </Button>
@@ -289,21 +318,27 @@ export default function DashboardNavbar({
               href="/dashboard?tab=schedule"
               onClick={() => setMobileMenuOpen(false)}
             >
-              <Button variant="ghost" className="w-full justify-start">
+              <Button
+                variant="ghost"
+                className="w-full justify-start hover:bg-green-50 dark:hover:bg-green-950/30 rounded-lg transition-all duration-200"
+              >
                 <Clock className="w-4 h-4 mr-3" />
                 Schedule
               </Button>
             </Link>
             <Link href="/account" onClick={() => setMobileMenuOpen(false)}>
-              <Button variant="ghost" className="w-full justify-start">
+              <Button
+                variant="ghost"
+                className="w-full justify-start hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg transition-all duration-200"
+              >
                 <Settings className="w-4 h-4 mr-3" />
                 Account
               </Button>
             </Link>
-            <div className="pt-3 border-t border-gray-200 dark:border-gray-800 space-y-2">
+            <div className="pt-4 border-t border-gray-200/50 dark:border-gray-800/50 space-y-3">
               {userData?.subscription_plan !== "premium" && (
                 <Button
-                  className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0"
+                  className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300"
                   onClick={() => {
                     handleUpgrade();
                     setMobileMenuOpen(false);
@@ -315,7 +350,7 @@ export default function DashboardNavbar({
                 </Button>
               )}
               <Button
-                className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white border-0"
+                className="w-full bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300"
                 onClick={() => {
                   router.push("/dashboard?tab=create");
                   setMobileMenuOpen(false);

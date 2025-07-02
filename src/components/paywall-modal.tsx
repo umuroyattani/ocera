@@ -48,30 +48,51 @@ export default function PaywallModal({
     setUpgradeLoading(true);
 
     try {
+      console.log("Starting Paystack checkout process for user:", user.id);
+
       const { data, error } = await supabase.functions.invoke(
-        "supabase-functions-lemonsqueezy-checkout",
+        "supabase-functions-paystack-checkout",
         {
           body: {
             plan: "premium",
             userId: user.id,
+            email: user.email,
           },
         },
       );
 
+      console.log("Paystack checkout response:", { data, error });
+
       if (error) {
         console.error("Error creating checkout:", error);
-        alert("Failed to create checkout session. Please try again.");
+        alert(
+          `Failed to create checkout session: ${error.message || "Unknown error"}. Please try again.`,
+        );
         return;
       }
 
       if (data?.success && data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+        console.log("Opening Paystack checkout:", data.checkoutUrl);
+        // Open Paystack checkout in a new window
+        const popup = window.open(
+          data.checkoutUrl,
+          "paystack-checkout",
+          "width=500,height=700,scrollbars=yes,resizable=yes",
+        );
+
+        if (!popup) {
+          // Fallback to redirect if popup is blocked
+          window.location.href = data.checkoutUrl;
+        }
       } else {
+        console.error("Invalid checkout response:", data);
         throw new Error(data?.error || "Failed to create checkout session");
       }
     } catch (error) {
       console.error("Upgrade error:", error);
-      alert("Something went wrong. Please try again.");
+      alert(
+        `Something went wrong: ${error.message || "Unknown error"}. Please try again.`,
+      );
     } finally {
       setUpgradeLoading(false);
     }

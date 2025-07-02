@@ -429,24 +429,62 @@ export default function Home() {
                         ? async (e) => {
                             e.preventDefault();
                             try {
+                              console.log(
+                                "Starting Paystack checkout process for user:",
+                                user.id,
+                              );
+
                               const { data, error } =
                                 await supabase.functions.invoke(
-                                  "supabase-functions-lemonsqueezy-checkout",
+                                  "supabase-functions-paystack-checkout",
                                   {
                                     body: {
                                       plan: "premium",
                                       userId: user.id,
+                                      email: user.email,
                                     },
                                   },
                                 );
-                              if (error) throw error;
+
+                              console.log("Paystack checkout response:", {
+                                data,
+                                error,
+                              });
+
+                              if (error) {
+                                console.error(
+                                  "Error creating checkout:",
+                                  error,
+                                );
+                                throw error;
+                              }
+
                               if (data?.success && data.checkoutUrl) {
-                                window.location.href = data.checkoutUrl;
+                                console.log(
+                                  "Opening Paystack checkout:",
+                                  data.checkoutUrl,
+                                );
+                                // Open Paystack checkout in a new window
+                                const popup = window.open(
+                                  data.checkoutUrl,
+                                  "paystack-checkout",
+                                  "width=500,height=700,scrollbars=yes,resizable=yes",
+                                );
+
+                                if (!popup) {
+                                  // Fallback to redirect if popup is blocked
+                                  window.location.href = data.checkoutUrl;
+                                }
+                              } else {
+                                throw new Error(
+                                  data?.error ||
+                                    "Failed to create checkout session",
+                                );
                               }
                             } catch (error) {
                               console.error("Checkout error:", error);
                               alert(
-                                "Failed to create checkout session. Please try again.",
+                                `Failed to create checkout session: ${error.message || "Unknown error"}. Please try again.`,
                               );
                             }
                           }

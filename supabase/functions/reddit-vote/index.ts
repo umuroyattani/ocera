@@ -10,11 +10,24 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { title, content, subreddit } = await req.json();
+    const { thing_id, direction } = await req.json();
 
-    if (!title || !content || !subreddit) {
+    if (!thing_id || direction === undefined) {
       return new Response(
-        JSON.stringify({ error: "Title, content, and subreddit are required" }),
+        JSON.stringify({ error: "thing_id and direction are required" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    // Validate direction: 1 for upvote, -1 for downvote, 0 for no vote
+    if (![1, -1, 0].includes(direction)) {
+      return new Response(
+        JSON.stringify({
+          error: "Direction must be 1 (upvote), -1 (downvote), or 0 (no vote)",
+        }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -78,8 +91,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Post to Reddit
-    const redditResponse = await fetch("https://oauth.reddit.com/api/submit", {
+    // Vote on Reddit
+    const redditResponse = await fetch("https://oauth.reddit.com/api/vote", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${userData.reddit_access_token}`,
@@ -87,15 +100,8 @@ Deno.serve(async (req) => {
         "User-Agent": "Ocera/1.0.0",
       },
       body: new URLSearchParams({
-        api_type: "json",
-        kind:
-          content.includes("http") && !content.includes(" ") ? "link" : "self",
-        sr: subreddit,
-        title: title,
-        text: content.includes("http") && !content.includes(" ") ? "" : content,
-        url: content.includes("http") && !content.includes(" ") ? content : "",
-        resubmit: "true",
-        sendreplies: "true",
+        id: thing_id,
+        dir: direction.toString(),
       }),
     });
 
@@ -107,22 +113,24 @@ Deno.serve(async (req) => {
       throw new Error(`Reddit API error: ${redditResponse.status}`);
     }
 
-    const redditData = await redditResponse.json();
-
-    if (redditData.json?.errors && redditData.json.errors.length > 0) {
-      const error = redditData.json.errors[0];
-      throw new Error(`Reddit error: ${error[1] || error[0]}`);
+    // Reddit vote API returns empty response on success
+    const responseText = await redditResponse.text();
+    let data = {};
+    if (responseText) {
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        // Response might be empty or not JSON
+      }
     }
-
-    const postUrl =
-      redditData.json?.data?.url || `https://reddit.com/r/${subreddit}`;
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: "Post submitted successfully",
-        url: postUrl,
-        subreddit: subreddit,
+        message: `Vote ${direction === 1 ? "up" : direction === -1 ? "down" : "removed"} successfully`,
+        thing_id,
+        direction,
+        data,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -130,13 +138,13 @@ Deno.serve(async (req) => {
       },
     );
   } catch (error) {
-    console.error("Error posting to Reddit:", error);
+    console.error("Error voting on Reddit:", error);
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
     return new Response(
       JSON.stringify({
         success: false,
-        error: "Failed to post to Reddit",
+        error: "Failed to vote on Reddit",
         details: errorMessage,
         timestamp: new Date().toISOString(),
       }),

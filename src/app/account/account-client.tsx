@@ -80,36 +80,58 @@ export default function AccountClient({ user, userData }: AccountClientProps) {
     setUpgradeLoading(true);
 
     try {
+      console.log("Starting Paystack checkout process for user:", user.id);
+
       const { data, error } = await supabase.functions.invoke(
-        "supabase-functions-lemonsqueezy-checkout",
+        "supabase-functions-paystack-checkout",
         {
           body: {
             plan: "premium",
             userId: user.id,
+            email: user.email,
           },
         },
       );
+
+      console.log("Paystack checkout response:", { data, error });
 
       if (error) {
         console.error("Error creating checkout:", error);
         toast({
           title: "Error",
-          description: "Failed to create checkout session. Please try again.",
+          description: `Failed to create checkout session: ${error.message || "Unknown error"}. Please try again.`,
           variant: "destructive",
         });
         return;
       }
 
       if (data?.success && data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+        console.log("Opening Paystack checkout:", data.checkoutUrl);
+        // Open Paystack checkout in a new window
+        const popup = window.open(
+          data.checkoutUrl,
+          "paystack-checkout",
+          "width=500,height=700,scrollbars=yes,resizable=yes",
+        );
+
+        if (!popup) {
+          // Fallback to redirect if popup is blocked
+          window.location.href = data.checkoutUrl;
+        } else {
+          toast({
+            title: "Checkout Opened",
+            description: "Complete your payment in the popup window.",
+          });
+        }
       } else {
+        console.error("Invalid checkout response:", data);
         throw new Error(data?.error || "Failed to create checkout session");
       }
     } catch (error) {
       console.error("Upgrade error:", error);
       toast({
         title: "Error",
-        description: "Something went wrong. Please try again.",
+        description: `Something went wrong: ${error.message || "Unknown error"}. Please try again.`,
         variant: "destructive",
       });
     } finally {

@@ -42,7 +42,9 @@ export default function RedditConnectionCard() {
 
   const handleConnect = () => {
     const REDDIT_CLIENT_ID = "Fe5oPbU_QGVuGtVgot2RIw";
-    const REDIRECT_URI = `${window.location.origin}/auth/reddit/callback`;
+    // Use the exact redirect URI that matches your Reddit app configuration
+    const REDIRECT_URI =
+      "https://admiring-nobel5-p6nq9.view-3.tempo-dev.app/auth/reddit/callback";
     const STATE = Math.random().toString(36).substring(7);
 
     // Store state in sessionStorage for verification
@@ -54,7 +56,10 @@ export default function RedditConnectionCard() {
     authUrl.searchParams.set("state", STATE);
     authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
     authUrl.searchParams.set("duration", "permanent");
-    authUrl.searchParams.set("scope", "identity read submit");
+    authUrl.searchParams.set(
+      "scope",
+      "identity read submit edit history mysubreddits subscribe vote wikiedit wikiread",
+    );
 
     window.location.href = authUrl.toString();
   };

@@ -10,18 +10,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { title, content, subreddit } = await req.json();
-
-    if (!title || !content || !subreddit) {
-      return new Response(
-        JSON.stringify({ error: "Title, content, and subreddit are required" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
-    }
-
     // Get the user's access token from Supabase
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -78,25 +66,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Post to Reddit
-    const redditResponse = await fetch("https://oauth.reddit.com/api/submit", {
-      method: "POST",
+    // Get user info from Reddit
+    const redditResponse = await fetch("https://oauth.reddit.com/api/v1/me", {
       headers: {
         Authorization: `Bearer ${userData.reddit_access_token}`,
-        "Content-Type": "application/x-www-form-urlencoded",
         "User-Agent": "Ocera/1.0.0",
       },
-      body: new URLSearchParams({
-        api_type: "json",
-        kind:
-          content.includes("http") && !content.includes(" ") ? "link" : "self",
-        sr: subreddit,
-        title: title,
-        text: content.includes("http") && !content.includes(" ") ? "" : content,
-        url: content.includes("http") && !content.includes(" ") ? content : "",
-        resubmit: "true",
-        sendreplies: "true",
-      }),
     });
 
     if (!redditResponse.ok) {
@@ -107,22 +82,23 @@ Deno.serve(async (req) => {
       throw new Error(`Reddit API error: ${redditResponse.status}`);
     }
 
-    const redditData = await redditResponse.json();
-
-    if (redditData.json?.errors && redditData.json.errors.length > 0) {
-      const error = redditData.json.errors[0];
-      throw new Error(`Reddit error: ${error[1] || error[0]}`);
-    }
-
-    const postUrl =
-      redditData.json?.data?.url || `https://reddit.com/r/${subreddit}`;
+    const userInfo = await redditResponse.json();
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: "Post submitted successfully",
-        url: postUrl,
-        subreddit: subreddit,
+        data: {
+          id: userInfo.id,
+          name: userInfo.name,
+          link_karma: userInfo.link_karma,
+          comment_karma: userInfo.comment_karma,
+          total_karma: userInfo.link_karma + userInfo.comment_karma,
+          created_utc: userInfo.created_utc,
+          is_gold: userInfo.is_gold,
+          is_mod: userInfo.is_mod,
+          has_verified_email: userInfo.has_verified_email,
+          icon_img: userInfo.icon_img,
+        },
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -130,13 +106,13 @@ Deno.serve(async (req) => {
       },
     );
   } catch (error) {
-    console.error("Error posting to Reddit:", error);
+    console.error("Error getting Reddit user info:", error);
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
     return new Response(
       JSON.stringify({
         success: false,
-        error: "Failed to post to Reddit",
+        error: "Failed to get Reddit user info",
         details: errorMessage,
         timestamp: new Date().toISOString(),
       }),

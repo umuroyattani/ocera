@@ -10,16 +10,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { title, content, subreddit } = await req.json();
+    const { thing_id } = await req.json();
 
-    if (!title || !content || !subreddit) {
-      return new Response(
-        JSON.stringify({ error: "Title, content, and subreddit are required" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
+    if (!thing_id) {
+      return new Response(JSON.stringify({ error: "thing_id is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Get the user's access token from Supabase
@@ -78,8 +75,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Post to Reddit
-    const redditResponse = await fetch("https://oauth.reddit.com/api/submit", {
+    // Delete post on Reddit
+    const redditResponse = await fetch("https://oauth.reddit.com/api/del", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${userData.reddit_access_token}`,
@@ -87,15 +84,7 @@ Deno.serve(async (req) => {
         "User-Agent": "Ocera/1.0.0",
       },
       body: new URLSearchParams({
-        api_type: "json",
-        kind:
-          content.includes("http") && !content.includes(" ") ? "link" : "self",
-        sr: subreddit,
-        title: title,
-        text: content.includes("http") && !content.includes(" ") ? "" : content,
-        url: content.includes("http") && !content.includes(" ") ? content : "",
-        resubmit: "true",
-        sendreplies: "true",
+        id: thing_id,
       }),
     });
 
@@ -107,22 +96,28 @@ Deno.serve(async (req) => {
       throw new Error(`Reddit API error: ${redditResponse.status}`);
     }
 
-    const redditData = await redditResponse.json();
-
-    if (redditData.json?.errors && redditData.json.errors.length > 0) {
-      const error = redditData.json.errors[0];
-      throw new Error(`Reddit error: ${error[1] || error[0]}`);
+    // Reddit delete API typically returns empty response on success
+    const responseText = await redditResponse.text();
+    let data = {};
+    if (responseText) {
+      try {
+        data = JSON.parse(responseText);
+        // Check for Reddit API errors in the response
+        if (data.json?.errors && data.json.errors.length > 0) {
+          const error = data.json.errors[0];
+          throw new Error(`Reddit error: ${error[1] || error[0]}`);
+        }
+      } catch (parseError) {
+        // Response might be empty or not JSON, which is fine for delete
+      }
     }
-
-    const postUrl =
-      redditData.json?.data?.url || `https://reddit.com/r/${subreddit}`;
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: "Post submitted successfully",
-        url: postUrl,
-        subreddit: subreddit,
+        message: "Post deleted successfully",
+        thing_id,
+        data,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -130,13 +125,13 @@ Deno.serve(async (req) => {
       },
     );
   } catch (error) {
-    console.error("Error posting to Reddit:", error);
+    console.error("Error deleting Reddit post:", error);
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
     return new Response(
       JSON.stringify({
         success: false,
-        error: "Failed to post to Reddit",
+        error: "Failed to delete Reddit post",
         details: errorMessage,
         timestamp: new Date().toISOString(),
       }),
