@@ -173,11 +173,11 @@ We welcome contributions and ideas!
 
 🧠 Learn More
 
-🌐 Website: https://ocera.ai (placeholder – update when ready)
+🌐 Website: https://ocera.top 
 
-🐦 Twitter: @umuroyattani
+🐦 Twitter: @oceraapp
 
-📬 Beta access: Waitlist Form (or insert a real link)
+📬 Beta access: Waitlist Form 
 
 
 
