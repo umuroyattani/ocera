@@ -7,7 +7,7 @@
 ![Issues](https://img.shields.io/github/issues/umuroyattani/ocera)
 
 <p align="center">
-  <img src="https://imgur.com/a/2QIM2je" width="200" alt="Ocera logo"/>
+  <img src="https://imgur.com/a/2QIM2je.png" width="200" alt="Ocera logo"/>
 </p>
 
 > *Post to multiple Reddit communities using AI — customized, compliant, and scheduled.*  
