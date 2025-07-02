@@ -1,17 +1,3 @@
-Perfect — here is your final, polished README.md customized for your project:
-
-✅ Repo name: ocera
-
-✅ Username: umuroyattani
-
-✅ Logo included
-
-✅ All branding updated for Ocera
-
-
-
----
-
 # 🤖 Ocera — AI Reddit Automation & Scheduler
 
 ![GitHub stars](https://img.shields.io/github/stars/umuroyattani/ocera?style=social)
@@ -21,7 +7,7 @@ Perfect — here is your final, polished README.md customized for your project:
 ![Issues](https://img.shields.io/github/issues/umuroyattani/ocera)
 
 <p align="center">
-  <img src="https://chat.openai.com/cdn-cgi/imagedelivery/jWa1aZziskG5gD1f5OEjhw/46e84f20-d8c7-4174-b1c5-5fc64f0cb702/public" width="200" alt="Ocera logo"/>
+  <img src="https://imgur.com/a/2QIM2je" width="200" alt="Ocera logo"/>
 </p>
 
 > *Post to multiple Reddit communities using AI — customized, compliant, and scheduled.*  
