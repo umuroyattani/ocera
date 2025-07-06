@@ -45,18 +45,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get user's Reddit access token
+    // Get user's Reddit connection status
     const { data: userData, error: dbError } = await supabaseClient
       .from("users")
-      .select("reddit_access_token, reddit_connected")
+      .select("reddit_connected, reddit_username")
       .eq("id", user.id)
       .single();
 
-    if (
-      dbError ||
-      !userData?.reddit_connected ||
-      !userData?.reddit_access_token
-    ) {
+    if (dbError || !userData?.reddit_connected) {
       return new Response(
         JSON.stringify({ error: "Reddit account not connected" }),
         {
@@ -66,45 +62,46 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get user info from Reddit
-    const redditResponse = await fetch("https://oauth.reddit.com/api/v1/me", {
-      headers: {
-        Authorization: `Bearer ${userData.reddit_access_token}`,
-        "User-Agent": "Ocera/1.0.0",
-      },
-    });
+    // Use PICA passthrough for Reddit user info
+    const PICA_SECRET_KEY = Deno.env.get("PICA_SECRET_KEY");
+    const PICA_SUPABASE_CONNECTION_KEY = Deno.env.get(
+      "PICA_SUPABASE_CONNECTION_KEY",
+    );
+    const ACTION_ID = "reddit-user-info";
 
-    if (!redditResponse.ok) {
-      const errorText = await redditResponse.text();
-      console.error(
-        `Reddit API Error: ${redditResponse.status} - ${errorText}`,
-      );
-      throw new Error(`Reddit API error: ${redditResponse.status}`);
+    if (!PICA_SECRET_KEY || !PICA_SUPABASE_CONNECTION_KEY) {
+      throw new Error("Missing Pica configuration");
     }
 
-    const userInfo = await redditResponse.json();
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data: {
-          id: userInfo.id,
-          name: userInfo.name,
-          link_karma: userInfo.link_karma,
-          comment_karma: userInfo.comment_karma,
-          total_karma: userInfo.link_karma + userInfo.comment_karma,
-          created_utc: userInfo.created_utc,
-          is_gold: userInfo.is_gold,
-          is_mod: userInfo.is_mod,
-          has_verified_email: userInfo.has_verified_email,
-          icon_img: userInfo.icon_img,
-        },
-      }),
+    // Use Pica passthrough endpoint for Reddit user info
+    const response = await fetch(
+      "https://api.picaos.com/v1/passthrough/supabase/functions/reddit-user-info/index.ts",
       {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
+        method: "POST",
+        headers: {
+          "x-pica-secret": PICA_SECRET_KEY,
+          "x-pica-connection-key": PICA_SUPABASE_CONNECTION_KEY,
+          "x-pica-action-id": ACTION_ID,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: user.id,
+        }),
       },
     );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Pica passthrough error:", errorText);
+      throw new Error("Failed to get Reddit user info via Pica");
+    }
+
+    const data = await response.json();
+
+    return new Response(JSON.stringify(data), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+    });
   } catch (error) {
     console.error("Error getting Reddit user info:", error);
     const errorMessage =

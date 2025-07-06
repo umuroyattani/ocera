@@ -14,14 +14,16 @@ export default function RedditLoginButton({
   const handleRedditLogin = () => {
     setIsLoading(true);
 
+    // Generate a temporary user ID for guests
+    const tempUserId = `guest_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
     const REDDIT_CLIENT_ID = "Fe5oPbU_QGVuGtVgot2RIw";
-    // Use the exact redirect URI that matches your Reddit app configuration
-    const REDIRECT_URI =
-      "https://admiring-nobel5-p6nq9.view-3.tempo-dev.app/auth/reddit/callback";
-    const STATE = Math.random().toString(36).substring(7);
+    const REDIRECT_URI = `https://ocera.top/auth/reddit/callback`;
+    const STATE = `${tempUserId}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
     // Store state in sessionStorage for verification
     sessionStorage.setItem("reddit_oauth_state", STATE);
+    sessionStorage.setItem("reddit_temp_user_id", tempUserId);
 
     const authUrl = new URL("https://www.reddit.com/api/v1/authorize");
     authUrl.searchParams.set("client_id", REDDIT_CLIENT_ID);
@@ -34,6 +36,13 @@ export default function RedditLoginButton({
       "identity read submit edit history mysubreddits subscribe vote wikiedit wikiread",
     );
 
+    console.log("Starting Reddit OAuth for guest user:", {
+      tempUserId,
+      state: STATE,
+      redirectUri: REDIRECT_URI,
+    });
+
+    // Redirect directly to Reddit OAuth
     window.location.href = authUrl.toString();
   };
 

@@ -40,28 +40,61 @@ export default function RedditConnectionCard() {
     }
   };
 
-  const handleConnect = () => {
-    const REDDIT_CLIENT_ID = "Fe5oPbU_QGVuGtVgot2RIw";
-    // Use the exact redirect URI that matches your Reddit app configuration
-    const REDIRECT_URI =
-      "https://admiring-nobel5-p6nq9.view-3.tempo-dev.app/auth/reddit/callback";
-    const STATE = Math.random().toString(36).substring(7);
+  const handleConnect = async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    // Store state in sessionStorage for verification
-    sessionStorage.setItem("reddit_oauth_state", STATE);
+      if (!user) {
+        console.error("User not authenticated");
+        alert("Please log in first to connect your Reddit account.");
+        return;
+      }
 
-    const authUrl = new URL("https://www.reddit.com/api/v1/authorize");
-    authUrl.searchParams.set("client_id", REDDIT_CLIENT_ID);
-    authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("state", STATE);
-    authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
-    authUrl.searchParams.set("duration", "permanent");
-    authUrl.searchParams.set(
-      "scope",
-      "identity read submit edit history mysubreddits subscribe vote wikiedit wikiread",
-    );
+      const REDDIT_CLIENT_ID = "Fe5oPbU_QGVuGtVgot2RIw";
+      const REDIRECT_URI = `https://ocera.top/auth/reddit/callback`;
+      const STATE = `${user.id}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-    window.location.href = authUrl.toString();
+      console.log("Reddit OAuth configuration:", {
+        clientId: REDDIT_CLIENT_ID,
+        redirectUri: REDIRECT_URI,
+        state: STATE,
+        userId: user.id,
+        origin: window.location.origin,
+      });
+
+      // Store state and user ID for verification
+      sessionStorage.setItem("reddit_oauth_state", STATE);
+      sessionStorage.setItem("reddit_oauth_user_id", user.id);
+
+      const authUrl = new URL("https://www.reddit.com/api/v1/authorize");
+      authUrl.searchParams.set("client_id", REDDIT_CLIENT_ID);
+      authUrl.searchParams.set("response_type", "code");
+      authUrl.searchParams.set("state", STATE);
+      authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
+      authUrl.searchParams.set("duration", "permanent");
+      authUrl.searchParams.set(
+        "scope",
+        "identity read submit edit history mysubreddits subscribe vote wikiedit wikiread",
+      );
+
+      console.log("Final Reddit OAuth URL:", authUrl.toString());
+
+      // Verify the URL is properly constructed
+      if (
+        !authUrl.toString().includes(REDDIT_CLIENT_ID) ||
+        !authUrl.toString().includes(STATE)
+      ) {
+        throw new Error("OAuth URL construction failed");
+      }
+
+      // For better UX, redirect directly instead of using popup
+      window.location.href = authUrl.toString();
+    } catch (error) {
+      console.error("Error initiating Reddit connection:", error);
+      alert("Failed to start Reddit connection. Please try again.");
+    }
   };
 
   if (isLoading) {

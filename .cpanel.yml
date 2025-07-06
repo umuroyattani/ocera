@@ -1,0 +1,8 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/username/public_html/
+    - /bin/cp -R * $DEPLOYPATH
+    - /bin/cp .next $DEPLOYPATH
+    - /bin/cp package.json $DEPLOYPATH
+    - /bin/cp server.js $DEPLOYPATH

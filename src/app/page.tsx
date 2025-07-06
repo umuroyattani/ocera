@@ -456,7 +456,10 @@ export default function Home() {
                                   "Error creating checkout:",
                                   error,
                                 );
-                                throw error;
+                                alert(
+                                  `Checkout error: ${error.message || "Unknown error"}. Please try again or contact support.`,
+                                );
+                                return;
                               }
 
                               if (data?.success && data.checkoutUrl) {
@@ -476,15 +479,18 @@ export default function Home() {
                                   window.location.href = data.checkoutUrl;
                                 }
                               } else {
-                                throw new Error(
-                                  data?.error ||
-                                    "Failed to create checkout session",
+                                console.error(
+                                  "Invalid checkout response:",
+                                  data,
+                                );
+                                alert(
+                                  `Checkout failed: ${data?.error || "Invalid response from payment service"}. Please try again.`,
                                 );
                               }
                             } catch (error) {
                               console.error("Checkout error:", error);
                               alert(
-                                `Failed to create checkout session: ${error.message || "Unknown error"}. Please try again.`,
+                                `Failed to create checkout session: ${error.message || "Unknown error"}. Please try again or contact support.`,
                               );
                             }
                           }
@@ -588,7 +594,7 @@ export default function Home() {
               <Button
                 variant="outline"
                 size="lg"
-                className="border-2 border-white text-white hover:bg-white hover:text-orange-600 px-10 py-4 text-lg font-bold transition-all duration-300"
+                className="border-2 border-white/80 text-white bg-white/10 backdrop-blur-sm hover:bg-white hover:text-orange-600 hover:border-white px-10 py-4 text-lg font-bold transition-all duration-300 shadow-lg"
               >
                 <MessageSquare className="mr-2 w-5 h-5" />
                 Talk to Sales

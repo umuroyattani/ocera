@@ -16,6 +16,23 @@ import {
   Star,
   ArrowUpRight,
   Sparkles,
+  MessageSquare,
+  ThumbsUp,
+  ThumbsDown,
+  Eye,
+  Edit,
+  Trash2,
+  ExternalLink,
+  RefreshCw,
+  Mail,
+  Crown,
+  Globe,
+  Heart,
+  Share,
+  Bookmark,
+  Filter,
+  Search,
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +46,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/use-toast";
 import AIContentOptimizer from "@/components/ai-content-optimizer";
 import AISubredditSuggestions from "@/components/ai-subreddit-suggestions";
 import RedditConnectionCard from "@/components/reddit-connection-card";
@@ -45,20 +81,39 @@ export default function DashboardClient({
   userData,
 }: DashboardClientProps) {
   const [activeTab, setActiveTab] = useState("overview");
-  const [stats, setStats] = useState({
-    postsThisMonth: 0,
-    totalKarma: 0,
-    scheduledPosts: 0,
-    successRate: 0,
-    totalViews: 0,
-    engagementRate: 0,
+  const [redditData, setRedditData] = useState({
+    userInfo: null,
+    posts: [],
+    subreddits: [],
+    messages: [],
+    stats: {
+      totalKarma: 0,
+      linkKarma: 0,
+      commentKarma: 0,
+      postsThisMonth: 0,
+      commentsThisMonth: 0,
+      avgUpvotes: 0,
+    },
   });
-  const [recentPosts, setRecentPosts] = useState([]);
-  const [upcomingPosts, setUpcomingPosts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedPost, setSelectedPost] = useState(null);
+  const [newPost, setNewPost] = useState({
+    title: "",
+    content: "",
+    subreddit: "",
+  });
+  const [newMessage, setNewMessage] = useState({
+    to: "",
+    subject: "",
+    text: "",
+  });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("new");
 
   const supabase = createClient();
   const searchParams = useSearchParams();
+  const { toast } = useToast();
 
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -68,134 +123,402 @@ export default function DashboardClient({
   }, [searchParams]);
 
   useEffect(() => {
-    fetchRedditAnalytics();
+    if (userData?.reddit_connected) {
+      fetchAllRedditData();
+    } else {
+      setIsLoading(false);
+    }
   }, [userData]);
 
-  const fetchRedditAnalytics = async () => {
-    if (!userData?.reddit_connected || !userData?.reddit_access_token) {
-      // Use mock data if Reddit not connected
-      setStats({
-        postsThisMonth: 24,
-        totalKarma: 3247,
-        scheduledPosts: 7,
-        successRate: 92,
-        totalViews: 15420,
-        engagementRate: 8.4,
-      });
+  const fetchAllRedditData = async () => {
+    if (!userData?.reddit_connected) return;
 
-      setRecentPosts([
-        {
-          id: 1,
-          title: "How to Build a Successful SaaS Product",
-          subreddit: "r/entrepreneur",
-          karma: 156,
-          comments: 23,
-          status: "published",
-          publishedAt: "2 hours ago",
-        },
-        {
-          id: 2,
-          title: "Best Practices for React Development",
-          subreddit: "r/reactjs",
-          karma: 89,
-          comments: 12,
-          status: "published",
-          publishedAt: "1 day ago",
-        },
-        {
-          id: 3,
-          title: "Marketing Strategies for 2024",
-          subreddit: "r/marketing",
-          karma: 0,
-          comments: 0,
-          status: "scheduled",
-          publishedAt: "Tomorrow at 9:00 AM",
-        },
-      ]);
-
-      setUpcomingPosts([
-        {
-          id: 1,
-          title: "AI Tools for Content Creation",
-          subreddit: "r/artificial",
-          scheduledFor: "Today at 3:00 PM",
-          status: "ready",
-        },
-        {
-          id: 2,
-          title: "Remote Work Best Practices",
-          subreddit: "r/remotework",
-          scheduledFor: "Tomorrow at 10:00 AM",
-          status: "ready",
-        },
-      ]);
-
-      setIsLoading(false);
-      return;
-    }
-
+    setIsLoading(true);
     try {
-      // Fetch real Reddit analytics
-      const response = await fetch("/api/reddit/analytics", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          accessToken: userData.reddit_access_token,
-          username: userData.reddit_username,
-        }),
-      });
+      const authHeader = `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`;
 
-      if (response.ok) {
-        const data = await response.json();
-        setStats(
-          data.stats || {
-            postsThisMonth: 0,
-            totalKarma: data.karma || 0,
-            scheduledPosts: 0,
-            successRate: 0,
-            totalViews: 0,
-            engagementRate: 0,
-          },
-        );
-        setRecentPosts(data.recentPosts || []);
-      }
+      // Fetch user info
+      const userInfoResponse = await supabase.functions.invoke(
+        "supabase-functions-reddit-user-info",
+        {
+          headers: { Authorization: authHeader },
+        },
+      );
+
+      // Fetch user posts
+      const postsResponse = await supabase.functions.invoke(
+        "supabase-functions-reddit-posts",
+        {
+          body: { action: "user_posts", sort: "new", limit: 25 },
+          headers: { Authorization: authHeader },
+        },
+      );
+
+      // Fetch subscribed subreddits
+      const subredditsResponse = await supabase.functions.invoke(
+        "supabase-functions-reddit-subreddits",
+        {
+          body: { action: "my_subreddits" },
+          headers: { Authorization: authHeader },
+        },
+      );
+
+      // Fetch messages
+      const messagesResponse = await supabase.functions.invoke(
+        "supabase-functions-reddit-messages",
+        {
+          body: { action: "inbox" },
+          headers: { Authorization: authHeader },
+        },
+      );
+
+      const userInfo = userInfoResponse.data?.success
+        ? userInfoResponse.data.data
+        : null;
+      const posts = postsResponse.data?.success
+        ? postsResponse.data.data.posts || []
+        : [];
+      const subreddits = subredditsResponse.data?.success
+        ? subredditsResponse.data.data.data?.children || []
+        : [];
+      const messages = messagesResponse.data?.success
+        ? messagesResponse.data.data.messages || []
+        : [];
+
+      // Calculate stats
+      const now = new Date();
+      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const postsThisMonth = posts.filter(
+        (post: any) => new Date(post.created_utc * 1000) >= thisMonth,
+      ).length;
+
+      const totalUpvotes = posts.reduce(
+        (sum: number, post: any) => sum + (post.score || 0),
+        0,
+      );
+      const avgUpvotes =
+        posts.length > 0 ? Math.round(totalUpvotes / posts.length) : 0;
+
+      setRedditData({
+        userInfo,
+        posts,
+        subreddits,
+        messages,
+        stats: {
+          totalKarma: userInfo?.total_karma || 0,
+          linkKarma: userInfo?.link_karma || 0,
+          commentKarma: userInfo?.comment_karma || 0,
+          postsThisMonth,
+          commentsThisMonth: 0, // Would need separate API call
+          avgUpvotes,
+        },
+      });
     } catch (error) {
-      console.error("Error fetching Reddit analytics:", error);
+      console.error("Error fetching Reddit data:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch Reddit data. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleCreatePost = () => {
-    setActiveTab("create");
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchAllRedditData();
+    setRefreshing(false);
+    toast({
+      title: "Refreshed",
+      description: "Reddit data has been updated.",
+    });
   };
 
-  const handleOptimizeContent = () => {
-    setActiveTab("create");
-    // Scroll to AI optimizer section
-    setTimeout(() => {
-      const element = document.querySelector("[data-ai-optimizer]");
-      if (element) {
-        element.scrollIntoView({ behavior: "smooth" });
+  const handleVote = async (postId: string, direction: number) => {
+    try {
+      const authHeader = `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`;
+      const response = await supabase.functions.invoke(
+        "supabase-functions-reddit-vote",
+        {
+          body: { thing_id: postId, direction },
+          headers: { Authorization: authHeader },
+        },
+      );
+
+      if (response.data?.success) {
+        toast({
+          title: "Vote submitted",
+          description: `Successfully ${direction === 1 ? "upvoted" : direction === -1 ? "downvoted" : "removed vote on"} post.`,
+        });
+        // Refresh posts to show updated scores
+        await fetchAllRedditData();
+      } else {
+        throw new Error(response.data?.error || "Failed to vote");
       }
-    }, 100);
+    } catch (error) {
+      console.error("Error voting:", error);
+      toast({
+        title: "Error",
+        description: "Failed to submit vote. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
+
+  const handleDeletePost = async (postId: string) => {
+    try {
+      const authHeader = `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`;
+      const response = await supabase.functions.invoke(
+        "supabase-functions-reddit-delete-post",
+        {
+          body: { thing_id: postId },
+          headers: { Authorization: authHeader },
+        },
+      );
+
+      if (response.data?.success) {
+        toast({
+          title: "Post deleted",
+          description: "Post has been successfully deleted.",
+        });
+        await fetchAllRedditData();
+      } else {
+        throw new Error(response.data?.error || "Failed to delete post");
+      }
+    } catch (error) {
+      console.error("Error deleting post:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete post. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCreatePost = async () => {
+    if (!newPost.title || !newPost.content || !newPost.subreddit) {
+      toast({
+        title: "Error",
+        description: "Please fill in all fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const authHeader = `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`;
+      const response = await supabase.functions.invoke(
+        "supabase-functions-reddit-post",
+        {
+          body: {
+            title: newPost.title,
+            content: newPost.content,
+            subreddit: newPost.subreddit,
+          },
+          headers: { Authorization: authHeader },
+        },
+      );
+
+      if (response.data?.success) {
+        toast({
+          title: "Post created",
+          description: "Your post has been successfully submitted to Reddit.",
+        });
+        setNewPost({ title: "", content: "", subreddit: "" });
+        await fetchAllRedditData();
+      } else {
+        throw new Error(response.data?.error || "Failed to create post");
+      }
+    } catch (error) {
+      console.error("Error creating post:", error);
+      toast({
+        title: "Error",
+        description: "Failed to create post. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!newMessage.to || !newMessage.subject || !newMessage.text) {
+      toast({
+        title: "Error",
+        description: "Please fill in all message fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const authHeader = `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`;
+      const response = await supabase.functions.invoke(
+        "supabase-functions-reddit-messages",
+        {
+          body: {
+            action: "compose",
+            to: newMessage.to,
+            subject: newMessage.subject,
+            text: newMessage.text,
+          },
+          headers: { Authorization: authHeader },
+        },
+      );
+
+      if (response.data?.success) {
+        toast({
+          title: "Message sent",
+          description: "Your message has been sent successfully.",
+        });
+        setNewMessage({ to: "", subject: "", text: "" });
+      } else {
+        throw new Error(response.data?.error || "Failed to send message");
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+      toast({
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const filteredPosts = redditData.posts.filter(
+    (post: any) =>
+      post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      post.subreddit.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
 
   if (isLoading) {
     return (
       <main className="container mx-auto px-4 py-8">
         <div className="animate-pulse space-y-6">
-          <div className="h-32 bg-gray-200 rounded-lg"></div>
+          <div className="h-32 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
+              <div
+                key={i}
+                className="h-32 bg-gray-200 dark:bg-gray-700 rounded-lg"
+              ></div>
             ))}
           </div>
         </div>
       </main>
     );
+  }
+
+  // Show demo data if Reddit is not connected
+  if (!userData?.reddit_connected) {
+    // Set demo data for showcase
+    const demoData = {
+      userInfo: {
+        name: "demo_user",
+        total_karma: 15420,
+        link_karma: 8950,
+        comment_karma: 6470,
+        created_utc: 1577836800, // Jan 1, 2020
+        is_gold: false,
+        has_verified_email: true,
+      },
+      posts: [
+        {
+          id: "demo1",
+          title: "How AI is revolutionizing Reddit marketing strategies",
+          subreddit: "marketing",
+          score: 342,
+          num_comments: 28,
+          created_utc: Date.now() / 1000 - 86400, // 1 day ago
+          permalink: "/r/marketing/comments/demo1/",
+          selftext:
+            "Exploring the latest trends in AI-powered social media marketing...",
+        },
+        {
+          id: "demo2",
+          title: "Best practices for multi-subreddit posting",
+          subreddit: "socialmedia",
+          score: 156,
+          num_comments: 15,
+          created_utc: Date.now() / 1000 - 172800, // 2 days ago
+          permalink: "/r/socialmedia/comments/demo2/",
+          selftext:
+            "A comprehensive guide to posting across multiple communities...",
+        },
+        {
+          id: "demo3",
+          title: "The future of content optimization",
+          subreddit: "technology",
+          score: 89,
+          num_comments: 12,
+          created_utc: Date.now() / 1000 - 259200, // 3 days ago
+          permalink: "/r/technology/comments/demo3/",
+          selftext:
+            "Discussing how AI can help optimize content for different audiences...",
+        },
+      ],
+      subreddits: [
+        {
+          data: {
+            id: "demo_sub1",
+            display_name: "marketing",
+            subscribers: 2500000,
+            public_description:
+              "A community for marketing professionals and enthusiasts",
+            title: "Marketing",
+          },
+        },
+        {
+          data: {
+            id: "demo_sub2",
+            display_name: "socialmedia",
+            subscribers: 1200000,
+            public_description:
+              "Discussion about social media platforms and strategies",
+            title: "Social Media",
+          },
+        },
+        {
+          data: {
+            id: "demo_sub3",
+            display_name: "technology",
+            subscribers: 8500000,
+            public_description: "The latest in technology news and discussion",
+            title: "Technology",
+          },
+        },
+      ],
+      messages: [
+        {
+          id: "demo_msg1",
+          subject: "Great post about AI marketing!",
+          author: "marketing_pro",
+          body: "Really enjoyed your insights on AI-powered marketing strategies. Would love to collaborate!",
+          created_utc: Date.now() / 1000 - 43200, // 12 hours ago
+          new: true,
+        },
+        {
+          id: "demo_msg2",
+          subject: "Question about multi-posting",
+          author: "reddit_newbie",
+          body: "Hi! I saw your post about multi-subreddit posting. Could you share some tips for beginners?",
+          created_utc: Date.now() / 1000 - 86400, // 1 day ago
+          new: false,
+        },
+      ],
+      stats: {
+        totalKarma: 15420,
+        linkKarma: 8950,
+        commentKarma: 6470,
+        postsThisMonth: 8,
+        commentsThisMonth: 24,
+        avgUpvotes: 196,
+      },
+    };
+
+    // Override the redditData with demo data
+    if (redditData.posts.length === 0) {
+      setRedditData(demoData);
+    }
   }
 
   return (
@@ -205,33 +528,38 @@ export default function DashboardClient({
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6">
           <div>
             <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-              Welcome back
-              {userData?.reddit_username
-                ? `, u/${userData.reddit_username}`
+              Welcome to Ocera Dashboard
+              {redditData.userInfo?.name
+                ? `, u/${redditData.userInfo.name}`
                 : ""}
               ! 👋
             </h1>
             <p className="text-lg text-gray-600 dark:text-gray-300">
-              Ready to create your next viral Reddit post?
+              {userData?.reddit_connected
+                ? "Your Reddit dashboard with real-time data and analytics"
+                : "Demo dashboard - Connect your Reddit account for real data"}
             </p>
           </div>
           <div className="flex gap-3 mt-4 lg:mt-0">
             <Button
               size="lg"
-              className="bg-orange-600 hover:bg-orange-700 text-white"
-              onClick={handleCreatePost}
+              variant="outline"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="border-orange-600 text-orange-600 hover:bg-orange-50"
             >
-              <Plus className="w-5 h-5 mr-2" />
-              Create New Post
+              <RefreshCw
+                className={`w-5 h-5 mr-2 ${refreshing ? "animate-spin" : ""}`}
+              />
+              Refresh
             </Button>
             <Button
               size="lg"
-              variant="outline"
-              className="border-orange-600 text-orange-600 hover:bg-orange-50"
-              onClick={handleOptimizeContent}
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+              onClick={() => setActiveTab("create")}
             >
-              <Zap className="w-5 h-5 mr-2" />
-              AI Optimize
+              <Plus className="w-5 h-5 mr-2" />
+              Create Post
             </Button>
           </div>
         </div>
@@ -243,18 +571,18 @@ export default function DashboardClient({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                    Posts This Month
+                    Total Karma
                   </p>
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {stats.postsThisMonth}
+                    {redditData.stats.totalKarma.toLocaleString()}
                   </p>
                   <p className="text-xs text-green-600 flex items-center mt-1">
-                    <ArrowUpRight className="w-3 h-3 mr-1" />
-                    +12% from last month
+                    <Crown className="w-3 h-3 mr-1" />
+                    Link: {redditData.stats.linkKarma}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900 rounded-full flex items-center justify-center">
-                  <BarChart3 className="w-6 h-6 text-orange-600" />
+                  <TrendingUp className="w-6 h-6 text-orange-600" />
                 </div>
               </div>
             </CardContent>
@@ -265,18 +593,18 @@ export default function DashboardClient({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                    Total Karma
+                    Comment Karma
                   </p>
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {stats.totalKarma.toLocaleString()}
+                    {redditData.stats.commentKarma.toLocaleString()}
                   </p>
                   <p className="text-xs text-green-600 flex items-center mt-1">
-                    <ArrowUpRight className="w-3 h-3 mr-1" />
-                    +8% this week
+                    <MessageSquare className="w-3 h-3 mr-1" />
+                    From comments
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
-                  <TrendingUp className="w-6 h-6 text-green-600" />
+                  <MessageSquare className="w-6 h-6 text-green-600" />
                 </div>
               </div>
             </CardContent>
@@ -287,18 +615,18 @@ export default function DashboardClient({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                    Scheduled Posts
+                    Posts This Month
                   </p>
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {stats.scheduledPosts}
+                    {redditData.stats.postsThisMonth}
                   </p>
                   <p className="text-xs text-blue-600 flex items-center mt-1">
-                    <Clock className="w-3 h-3 mr-1" />
-                    Next in 2 hours
+                    <BarChart3 className="w-3 h-3 mr-1" />
+                    Recent activity
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                  <Calendar className="w-6 h-6 text-blue-600" />
+                  <BarChart3 className="w-6 h-6 text-blue-600" />
                 </div>
               </div>
             </CardContent>
@@ -309,15 +637,18 @@ export default function DashboardClient({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                    Success Rate
+                    Avg Upvotes
                   </p>
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {stats.successRate}%
+                    {redditData.stats.avgUpvotes}
                   </p>
-                  <Progress value={stats.successRate} className="mt-2 h-2" />
+                  <p className="text-xs text-purple-600 flex items-center mt-1">
+                    <ThumbsUp className="w-3 h-3 mr-1" />
+                    Per post
+                  </p>
                 </div>
                 <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center">
-                  <Target className="w-6 h-6 text-purple-600" />
+                  <ThumbsUp className="w-6 h-6 text-purple-600" />
                 </div>
               </div>
             </CardContent>
@@ -328,14 +659,14 @@ export default function DashboardClient({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                    Total Views
+                    Subreddits
                   </p>
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {stats.totalViews.toLocaleString()}
+                    {redditData.subreddits.length}
                   </p>
                   <p className="text-xs text-yellow-600 flex items-center mt-1">
-                    <Activity className="w-3 h-3 mr-1" />
-                    Last 30 days
+                    <Users className="w-3 h-3 mr-1" />
+                    Subscribed
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900 rounded-full flex items-center justify-center">
@@ -350,18 +681,18 @@ export default function DashboardClient({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                    Engagement
+                    Messages
                   </p>
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {stats.engagementRate}%
+                    {redditData.messages.length}
                   </p>
                   <p className="text-xs text-pink-600 flex items-center mt-1">
-                    <Star className="w-3 h-3 mr-1" />
-                    Above average
+                    <Mail className="w-3 h-3 mr-1" />
+                    In inbox
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-pink-100 dark:bg-pink-900 rounded-full flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-pink-600" />
+                  <Mail className="w-6 h-6 text-pink-600" />
                 </div>
               </div>
             </CardContent>
@@ -375,12 +706,18 @@ export default function DashboardClient({
         onValueChange={setActiveTab}
         className="space-y-6"
       >
-        <TabsList className="grid w-full grid-cols-5 bg-white dark:bg-gray-800 border shadow-sm">
+        <TabsList className="grid w-full grid-cols-6 bg-white dark:bg-gray-800 border shadow-sm">
           <TabsTrigger
             value="overview"
             className="data-[state=active]:bg-orange-600 data-[state=active]:text-white"
           >
             Overview
+          </TabsTrigger>
+          <TabsTrigger
+            value="posts"
+            className="data-[state=active]:bg-orange-600 data-[state=active]:text-white"
+          >
+            My Posts
           </TabsTrigger>
           <TabsTrigger
             value="create"
@@ -389,16 +726,16 @@ export default function DashboardClient({
             Create Post
           </TabsTrigger>
           <TabsTrigger
-            value="history"
+            value="subreddits"
             className="data-[state=active]:bg-orange-600 data-[state=active]:text-white"
           >
-            Post History
+            Subreddits
           </TabsTrigger>
           <TabsTrigger
-            value="schedule"
+            value="messages"
             className="data-[state=active]:bg-orange-600 data-[state=active]:text-white"
           >
-            Scheduled
+            Messages
           </TabsTrigger>
           <TabsTrigger
             value="settings"
@@ -411,7 +748,7 @@ export default function DashboardClient({
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Recent Activity */}
+            {/* Recent Posts */}
             <div className="lg:col-span-2">
               <Card className="bg-white dark:bg-gray-800">
                 <CardHeader>
@@ -420,56 +757,60 @@ export default function DashboardClient({
                     Recent Posts
                   </CardTitle>
                   <CardDescription className="text-gray-600 dark:text-gray-300">
-                    Your latest Reddit posts and their performance
+                    {userData?.reddit_connected
+                      ? "Your latest Reddit posts and their performance"
+                      : "Demo posts - Connect Reddit for your actual posts"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {recentPosts.map((post: any) => (
+                    {redditData.posts.slice(0, 5).map((post: any) => (
                       <div
                         key={post.id}
                         className="flex items-center justify-between p-4 border dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                       >
                         <div className="flex-1">
-                          <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
+                          <h4 className="font-semibold text-gray-900 dark:text-white mb-1 line-clamp-2">
                             {post.title}
                           </h4>
                           <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
                             <span className="font-medium text-orange-600">
-                              {post.subreddit}
+                              r/{post.subreddit}
                             </span>
-                            <span>{post.publishedAt}</span>
+                            <span>
+                              {new Date(
+                                post.created_utc * 1000,
+                              ).toLocaleDateString()}
+                            </span>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-center">
                             <div className="font-bold text-gray-900 dark:text-white">
-                              {post.karma}
+                              {post.score}
                             </div>
-                            <div className="text-xs text-gray-500">karma</div>
+                            <div className="text-xs text-gray-500">score</div>
                           </div>
                           <div className="text-center">
                             <div className="font-bold text-gray-900 dark:text-white">
-                              {post.comments}
+                              {post.num_comments}
                             </div>
                             <div className="text-xs text-gray-500">
                               comments
                             </div>
                           </div>
-                          <Badge
-                            variant={
-                              post.status === "published"
-                                ? "default"
-                                : "secondary"
-                            }
-                            className={
-                              post.status === "published"
-                                ? "bg-green-100 text-green-800"
-                                : ""
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              window.open(
+                                `https://reddit.com${post.permalink}`,
+                                "_blank",
+                              )
                             }
                           >
-                            {post.status}
-                          </Badge>
+                            <ExternalLink className="w-4 h-4" />
+                          </Button>
                         </div>
                       </div>
                     ))}
@@ -478,45 +819,456 @@ export default function DashboardClient({
               </Card>
             </div>
 
-            {/* Quick Actions & Upcoming */}
+            {/* Quick Stats & Actions */}
             <div className="space-y-6">
-              <RedditConnectionCard />
-
               <Card className="bg-white dark:bg-gray-800">
                 <CardHeader>
                   <CardTitle className="text-gray-900 dark:text-white flex items-center">
-                    <Clock className="w-5 h-5 mr-2 text-blue-600" />
-                    Upcoming Posts
+                    <Star className="w-5 h-5 mr-2 text-yellow-600" />
+                    Account Stats
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {upcomingPosts.map((post: any) => (
-                      <div
-                        key={post.id}
-                        className="p-3 border dark:border-gray-700 rounded-lg"
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600 dark:text-gray-300">
+                        Account Age
+                      </span>
+                      <span className="font-semibold">
+                        {redditData.userInfo?.created_utc
+                          ? Math.floor(
+                              (Date.now() -
+                                redditData.userInfo.created_utc * 1000) /
+                                (1000 * 60 * 60 * 24 * 365),
+                            )
+                          : 0}{" "}
+                        years
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600 dark:text-gray-300">
+                        Gold Status
+                      </span>
+                      <Badge
+                        variant={
+                          redditData.userInfo?.is_gold ? "default" : "secondary"
+                        }
                       >
-                        <h5 className="font-medium text-gray-900 dark:text-white text-sm mb-1">
-                          {post.title}
-                        </h5>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-orange-600 font-medium">
-                            {post.subreddit}
-                          </span>
-                          <span className="text-gray-500">
-                            {post.scheduledFor}
+                        {redditData.userInfo?.is_gold ? "Gold" : "Regular"}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600 dark:text-gray-300">
+                        Verified Email
+                      </span>
+                      <Badge
+                        variant={
+                          redditData.userInfo?.has_verified_email
+                            ? "default"
+                            : "destructive"
+                        }
+                      >
+                        {redditData.userInfo?.has_verified_email
+                          ? "Verified"
+                          : "Unverified"}
+                      </Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <RedditConnectionCard />
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Posts Tab */}
+        <TabsContent value="posts" className="space-y-6">
+          <Card className="bg-white dark:bg-gray-800">
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <CardTitle className="text-gray-900 dark:text-white flex items-center">
+                    <BarChart3 className="w-5 h-5 mr-2 text-orange-600" />
+                    My Reddit Posts ({redditData.posts.length})
+                  </CardTitle>
+                  <CardDescription className="text-gray-600 dark:text-gray-300">
+                    {userData?.reddit_connected
+                      ? "Manage and analyze your Reddit posts"
+                      : "Demo posts - Connect Reddit to manage your actual posts"}
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                    <Input
+                      placeholder="Search posts..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 w-64"
+                    />
+                  </div>
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="new">Newest</SelectItem>
+                      <SelectItem value="top">Top Scored</SelectItem>
+                      <SelectItem value="comments">Most Comments</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {filteredPosts.map((post: any) => (
+                  <div
+                    key={post.id}
+                    className="flex items-start justify-between p-6 border dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-900 dark:text-white mb-2 line-clamp-2">
+                        {post.title}
+                      </h4>
+                      <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300 mb-3">
+                        <Badge
+                          variant="outline"
+                          className="text-orange-600 border-orange-600"
+                        >
+                          r/{post.subreddit}
+                        </Badge>
+                        <span>
+                          {new Date(
+                            post.created_utc * 1000,
+                          ).toLocaleDateString()}
+                        </span>
+                        <span className="flex items-center">
+                          <Eye className="w-4 h-4 mr-1" />
+                          {post.score} score
+                        </span>
+                        <span className="flex items-center">
+                          <MessageSquare className="w-4 h-4 mr-1" />
+                          {post.num_comments} comments
+                        </span>
+                      </div>
+                      {post.selftext && (
+                        <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 mb-3">
+                          {post.selftext}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleVote(`t3_${post.id}`, 1)}
+                        className="text-green-600 hover:bg-green-50"
+                      >
+                        <ThumbsUp className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleVote(`t3_${post.id}`, -1)}
+                        className="text-red-600 hover:bg-red-50"
+                      >
+                        <ThumbsDown className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          window.open(
+                            `https://reddit.com${post.permalink}`,
+                            "_blank",
+                          )
+                        }
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeletePost(`t3_${post.id}`)}
+                        className="text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Create Post Tab */}
+        <TabsContent value="create" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <Card className="bg-white dark:bg-gray-800">
+                <CardHeader>
+                  <CardTitle className="text-gray-900 dark:text-white flex items-center">
+                    <Plus className="w-5 h-5 mr-2 text-orange-600" />
+                    Create New Post
+                  </CardTitle>
+                  <CardDescription className="text-gray-600 dark:text-gray-300">
+                    {userData?.reddit_connected
+                      ? "Create and publish a new post to Reddit"
+                      : "Connect Reddit account to create and publish posts"}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="title">Post Title</Label>
+                    <Input
+                      id="title"
+                      placeholder="Enter your post title..."
+                      value={newPost.title}
+                      onChange={(e) =>
+                        setNewPost({ ...newPost, title: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="subreddit">Subreddit</Label>
+                    <Input
+                      id="subreddit"
+                      placeholder="e.g., AskReddit, programming, funny"
+                      value={newPost.subreddit}
+                      onChange={(e) =>
+                        setNewPost({ ...newPost, subreddit: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="content">Content</Label>
+                    <Textarea
+                      id="content"
+                      placeholder="Write your post content here..."
+                      value={newPost.content}
+                      onChange={(e) =>
+                        setNewPost({ ...newPost, content: e.target.value })
+                      }
+                      rows={8}
+                    />
+                  </div>
+                  <Button
+                    onClick={
+                      userData?.reddit_connected
+                        ? handleCreatePost
+                        : () => {
+                            toast({
+                              title: "Reddit Connection Required",
+                              description:
+                                "Please connect your Reddit account to create posts.",
+                              variant: "destructive",
+                            });
+                          }
+                    }
+                    className="w-full bg-orange-600 hover:bg-orange-700"
+                    disabled={!userData?.reddit_connected}
+                  >
+                    <Send className="w-4 h-4 mr-2" />
+                    {userData?.reddit_connected
+                      ? "Submit Post"
+                      : "Connect Reddit to Post"}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+            <div className="space-y-6">
+              <AISubredditSuggestions userData={userData} user={user} />
+              <AIContentOptimizer userData={userData} user={user} />
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Subreddits Tab */}
+        <TabsContent value="subreddits" className="space-y-6">
+          <Card className="bg-white dark:bg-gray-800">
+            <CardHeader>
+              <CardTitle className="text-gray-900 dark:text-white flex items-center">
+                <Users className="w-5 h-5 mr-2 text-yellow-600" />
+                My Subreddits ({redditData.subreddits.length})
+              </CardTitle>
+              <CardDescription className="text-gray-600 dark:text-gray-300">
+                {userData?.reddit_connected
+                  ? "Subreddits you're subscribed to"
+                  : "Demo subreddits - Connect Reddit for your subscriptions"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {redditData.subreddits.map((subreddit: any) => (
+                  <div
+                    key={subreddit.data.id}
+                    className="p-4 border dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900 dark:text-white">
+                        r/{subreddit.data.display_name}
+                      </h4>
+                      <Badge variant="secondary">
+                        {subreddit.data.subscribers?.toLocaleString() || "N/A"}{" "}
+                        members
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 mb-3">
+                      {subreddit.data.public_description ||
+                        subreddit.data.title}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        window.open(
+                          `https://reddit.com/r/${subreddit.data.display_name}`,
+                          "_blank",
+                        )
+                      }
+                      className="w-full"
+                    >
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Visit Subreddit
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Messages Tab */}
+        <TabsContent value="messages" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <Card className="bg-white dark:bg-gray-800">
+                <CardHeader>
+                  <CardTitle className="text-gray-900 dark:text-white flex items-center">
+                    <Mail className="w-5 h-5 mr-2 text-pink-600" />
+                    Inbox ({redditData.messages.length})
+                  </CardTitle>
+                  <CardDescription className="text-gray-600 dark:text-gray-300">
+                    {userData?.reddit_connected
+                      ? "Your Reddit messages and notifications"
+                      : "Demo messages - Connect Reddit for your actual inbox"}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {redditData.messages.map((message: any) => (
+                      <div
+                        key={message.id}
+                        className={`p-4 border dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                          message.new
+                            ? "border-orange-200 bg-orange-50 dark:bg-orange-950/30"
+                            : ""
+                        }`}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-gray-900 dark:text-white">
+                              {message.subject}
+                            </h4>
+                            {message.new && (
+                              <Badge
+                                variant="default"
+                                className="bg-orange-600"
+                              >
+                                New
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-sm text-gray-500">
+                            {new Date(
+                              message.created_utc * 1000,
+                            ).toLocaleDateString()}
                           </span>
                         </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
+                          From: u/{message.author}
+                        </p>
+                        <p className="text-sm text-gray-700 dark:text-gray-200 line-clamp-3">
+                          {message.body}
+                        </p>
                       </div>
                     ))}
                   </div>
+                </CardContent>
+              </Card>
+            </div>
+            <div>
+              <Card className="bg-white dark:bg-gray-800">
+                <CardHeader>
+                  <CardTitle className="text-gray-900 dark:text-white flex items-center">
+                    <Send className="w-5 h-5 mr-2 text-blue-600" />
+                    Send Message
+                  </CardTitle>
+                  <CardDescription className="text-gray-600 dark:text-gray-300">
+                    Send a private message to another Reddit user
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="to">To (username)</Label>
+                    <Input
+                      id="to"
+                      placeholder="Enter username..."
+                      value={newMessage.to}
+                      onChange={(e) =>
+                        setNewMessage({ ...newMessage, to: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="subject">Subject</Label>
+                    <Input
+                      id="subject"
+                      placeholder="Message subject..."
+                      value={newMessage.subject}
+                      onChange={(e) =>
+                        setNewMessage({
+                          ...newMessage,
+                          subject: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="text">Message</Label>
+                    <Textarea
+                      id="text"
+                      placeholder="Write your message..."
+                      value={newMessage.text}
+                      onChange={(e) =>
+                        setNewMessage({ ...newMessage, text: e.target.value })
+                      }
+                      rows={6}
+                    />
+                  </div>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-4"
-                    onClick={() => setActiveTab("schedule")}
+                    onClick={
+                      userData?.reddit_connected
+                        ? handleSendMessage
+                        : () => {
+                            toast({
+                              title: "Reddit Connection Required",
+                              description:
+                                "Please connect your Reddit account to send messages.",
+                              variant: "destructive",
+                            });
+                          }
+                    }
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    disabled={!userData?.reddit_connected}
                   >
-                    View All Scheduled
+                    <Send className="w-4 h-4 mr-2" />
+                    {userData?.reddit_connected
+                      ? "Send Message"
+                      : "Connect Reddit to Send"}
                   </Button>
                 </CardContent>
               </Card>
@@ -524,218 +1276,52 @@ export default function DashboardClient({
           </div>
         </TabsContent>
 
-        {/* Create Post Tab */}
-        <TabsContent value="create" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <div data-ai-optimizer>
-                <AIContentOptimizer userData={userData} user={user} />
-              </div>
-            </div>
-            <div className="space-y-6">
-              <AISubredditSuggestions userData={userData} user={user} />
-              <RedditConnectionCard />
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Post History Tab */}
-        <TabsContent value="history" className="space-y-6">
-          <Card className="bg-white dark:bg-gray-800">
-            <CardHeader>
-              <CardTitle className="text-gray-900 dark:text-white flex items-center">
-                <BarChart3 className="w-5 h-5 mr-2 text-orange-600" />
-                Post Analytics
-              </CardTitle>
-              <CardDescription className="text-gray-600 dark:text-gray-300">
-                Track your posts across all subreddits with detailed analytics
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {recentPosts.map((post: any) => (
-                  <div
-                    key={post.id}
-                    className="flex items-center justify-between p-4 border dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  >
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
-                        {post.title}
-                      </h4>
-                      <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
-                        <span className="font-medium text-orange-600">
-                          {post.subreddit}
-                        </span>
-                        <span>{post.publishedAt}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-center">
-                        <div className="font-bold text-gray-900 dark:text-white">
-                          {post.karma}
-                        </div>
-                        <div className="text-xs text-gray-500">karma</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="font-bold text-gray-900 dark:text-white">
-                          {post.comments}
-                        </div>
-                        <div className="text-xs text-gray-500">comments</div>
-                      </div>
-                      <Button variant="outline" size="sm">
-                        View Details
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Scheduled Posts Tab */}
-        <TabsContent value="schedule" className="space-y-6">
-          <Card className="bg-white dark:bg-gray-800">
-            <CardHeader>
-              <CardTitle className="text-gray-900 dark:text-white flex items-center">
-                <Calendar className="w-5 h-5 mr-2 text-blue-600" />
-                Scheduled Posts
-              </CardTitle>
-              <CardDescription className="text-gray-600 dark:text-gray-300">
-                Manage your scheduled Reddit posts and posting calendar
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {upcomingPosts.map((post: any) => (
-                  <div
-                    key={post.id}
-                    className="flex items-center justify-between p-6 border dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                  >
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
-                        {post.title}
-                      </h4>
-                      <div className="flex items-center gap-4 text-sm">
-                        <Badge
-                          variant="outline"
-                          className="text-orange-600 border-orange-600"
-                        >
-                          {post.subreddit}
-                        </Badge>
-                        <span className="text-gray-600 dark:text-gray-300 flex items-center">
-                          <Clock className="w-4 h-4 mr-1" />
-                          {post.scheduledFor}
-                        </span>
-                        <Badge
-                          variant="secondary"
-                          className="bg-green-100 text-green-800"
-                        >
-                          {post.status}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm">
-                        Edit
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-red-600 border-red-600 hover:bg-red-50"
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <Separator className="my-6" />
-
-              <div className="text-center">
-                <Button
-                  className="bg-orange-600 hover:bg-orange-700"
-                  onClick={() => setActiveTab("create")}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Schedule New Post
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         {/* Settings Tab */}
         <TabsContent value="settings" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <RedditConnectionCard />
-
             <Card className="bg-white dark:bg-gray-800">
               <CardHeader>
                 <CardTitle className="text-gray-900 dark:text-white">
-                  Account Preferences
+                  Reddit Account Info
                 </CardTitle>
                 <CardDescription className="text-gray-600 dark:text-gray-300">
-                  Manage your account settings and preferences
+                  Your Reddit account details and preferences
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between p-4 border dark:border-gray-700 rounded-lg">
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">
-                        Email Notifications
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        Get notified about post performance and updates
-                      </p>
-                    </div>
-                    <Button variant="outline" size="sm">
-                      Configure
-                    </Button>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <span className="text-sm font-medium">Username</span>
+                    <span className="text-sm">
+                      u/{redditData.userInfo?.name}
+                    </span>
                   </div>
-
-                  <div className="flex items-center justify-between p-4 border dark:border-gray-700 rounded-lg">
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">
-                        Auto-Scheduling
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        Automatically schedule posts for optimal times
-                      </p>
-                    </div>
-                    <Button variant="outline" size="sm">
-                      Setup
-                    </Button>
+                  <div className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <span className="text-sm font-medium">Account Created</span>
+                    <span className="text-sm">
+                      {redditData.userInfo?.created_utc
+                        ? new Date(
+                            redditData.userInfo.created_utc * 1000,
+                          ).toLocaleDateString()
+                        : "N/A"}
+                    </span>
                   </div>
-
-                  <div className="flex items-center justify-between p-4 border dark:border-gray-700 rounded-lg">
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">
-                        API Access
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        Manage your API keys and integrations
-                      </p>
-                    </div>
-                    <Button variant="outline" size="sm">
-                      Manage
-                    </Button>
+                  <div className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <span className="text-sm font-medium">Total Karma</span>
+                    <span className="text-sm font-bold text-orange-600">
+                      {redditData.userInfo?.total_karma?.toLocaleString()}
+                    </span>
                   </div>
-
-                  <div className="flex items-center justify-between p-4 border dark:border-gray-700 rounded-lg">
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">
-                        Data Export
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">
-                        Export your posts and analytics data
-                      </p>
-                    </div>
-                    <Button variant="outline" size="sm">
-                      Export
-                    </Button>
+                  <div className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    <span className="text-sm font-medium">Gold Status</span>
+                    <Badge
+                      variant={
+                        redditData.userInfo?.is_gold ? "default" : "secondary"
+                      }
+                    >
+                      {redditData.userInfo?.is_gold ? "Premium" : "Regular"}
+                    </Badge>
                   </div>
                 </div>
               </CardContent>

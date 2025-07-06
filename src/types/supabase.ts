@@ -9,6 +9,42 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      reddit_temp_connections: {
+        Row: {
+          access_token: string
+          created_at: string | null
+          expires_at: string | null
+          id: string
+          reddit_user_id: string
+          reddit_username: string
+          refresh_token: string | null
+          state: string
+          used: boolean | null
+        }
+        Insert: {
+          access_token: string
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          reddit_user_id: string
+          reddit_username: string
+          refresh_token?: string | null
+          state: string
+          used?: boolean | null
+        }
+        Update: {
+          access_token?: string
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          reddit_user_id?: string
+          reddit_username?: string
+          refresh_token?: string | null
+          state?: string
+          used?: boolean | null
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           created_at: string | null
@@ -50,7 +86,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      cleanup_old_reddit_temp_connections: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

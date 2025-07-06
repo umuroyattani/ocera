@@ -1,4 +1,6 @@
-# 🤖 Reddit Multi-Post AI Scheduler
+# 🤖 Ocera - AI-Powered Reddit Marketing Platform
+
+🌐 **Live at: https://ocera.top**
 
 ![GitHub stars](https://img.shields.io/github/stars/umuroyattani/reddit-ai-poster?style=social)
 ![GitHub forks](https://img.shields.io/github/forks/umuroyattani/reddit-ai-poster?style=social)
@@ -41,7 +43,7 @@ Built for creators who want to grow on Reddit without doing everything manually.
 ## 🎥 Demo
 
 > Coming soon...  
-> Until then, here’s a sneak peek:  
+> Until then, here's a sneak peek:  
 > ![Demo](https://your-demo-gif-or-image-link.com)
 
 ---
@@ -178,7 +180,7 @@ We welcome community contributions!
 
 📫 DM @YourHandle on Twitter
 
-🌐 Website: yourprojectsite.com
+🌐 Website: https://ocera.top
 
 🧪 Request access: Beta waitlist form
 
