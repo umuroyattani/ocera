@@ -40,6 +40,24 @@ interface DashboardClientProps {
   userData: any;
 }
 
+interface RecentPost {
+  id: number;
+  title: string;
+  subreddit: string;
+  karma: number;
+  comments: number;
+  status: string;
+  publishedAt: string;
+}
+
+interface UpcomingPost {
+  id: number;
+  title: string;
+  subreddit: string;
+  scheduledFor: string;
+  status: string;
+}
+
 export default function DashboardClient({
   user,
   userData,
@@ -53,8 +71,8 @@ export default function DashboardClient({
     totalViews: 0,
     engagementRate: 0,
   });
-  const [recentPosts, setRecentPosts] = useState([]);
-  const [upcomingPosts, setUpcomingPosts] = useState([]);
+  const [recentPosts, setRecentPosts] = useState<RecentPost[]>([]);
+  const [upcomingPosts, setUpcomingPosts] = useState<UpcomingPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const supabase = createClient();
