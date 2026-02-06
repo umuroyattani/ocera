@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "../../../../../supabase/client";
 
-export default function RedditCallback() {
+function RedditCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState("Processing...");
@@ -121,5 +121,13 @@ export default function RedditCallback() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function RedditCallback() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <RedditCallbackContent />
+    </Suspense>
   );
 }
